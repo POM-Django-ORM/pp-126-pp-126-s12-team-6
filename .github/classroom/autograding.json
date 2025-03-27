@@ -1,0 +1,17 @@
+{
+  "tests": [
+    {
+      "name": "Django Tests",
+      "setup": "pip install -r requirements.txt",
+      "run": "python manage.py test --settings=library.settings",
+      "input": "",
+      "output": "",
+      "comparison": "included",
+      "timeout": 30,
+      "points": 10,
+      "env": {
+        "DATABASE_URL": "postgres://postgres:postgres@localhost:5432/postgres"
+      }
+    }
+  ]
+}
