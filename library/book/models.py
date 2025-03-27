@@ -1,32 +1,38 @@
 from django.db import models
-from author.models import Author
+from authentication.models import CustomUser
+from book.models import Book
 
-class Book(models.Model):
-    name = models.CharField(max_length=128)
-    description = models.TextField()
-    count = models.IntegerField(default=10)
-    authors = models.ManyToManyField(Author)
+def format_dt(dt):
+    s = dt.strftime("%Y-%m-%d %H:%M:%S%z")
+    return s[:-2] + ":" + s[-2:] if len(s) >= 5 else s
 
-    @classmethod
-    def create(cls, **kwargs):
-        if 'name' not in kwargs or 'description' not in kwargs:
-            return None
-        if len(kwargs['name']) > 128:
-            return None
-        count_val = kwargs.get('count', 10)
-        book = cls(name=kwargs['name'], description=kwargs['description'], count=count_val)
-        book.save()
-        authors = kwargs.get('authors')
-        if authors:
-            for author in authors:
-                book.authors.add(author)
-        return book
+class Order(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE)
+    book = models.ForeignKey(Book, on_delete=models.CASCADE)
+    created_at = models.DateTimeField(auto_now_add=True)
+    end_at = models.DateTimeField(null=True, blank=True)
+    plated_end_at = models.DateTimeField()
 
     @classmethod
-    def delete_by_id(cls, book_id):
+    def create(cls, user, book, plated_end_at):
+        if not user.pk:
+            return None
+        if book.count <= 1:
+            return None
         try:
-            book = cls.objects.get(id=book_id)
-            book.delete()
+            order = cls(user=user, book=book, plated_end_at=plated_end_at)
+            order.save()
+            book.count -= 1
+            book.save()
+            return order
+        except Exception:
+            return None
+
+    @classmethod
+    def delete_by_id(cls, order_id):
+        try:
+            order = cls.objects.get(id=order_id)
+            order.delete()
             return True
         except cls.DoesNotExist:
             return False
@@ -36,45 +42,45 @@ class Book(models.Model):
         return list(cls.objects.all())
 
     @classmethod
-    def get_by_id(cls, book_id):
+    def get_by_id(cls, order_id):
         try:
-            return cls.objects.get(id=book_id)
+            return cls.objects.get(id=order_id)
         except cls.DoesNotExist:
             return None
 
-    def add_authors(self, authors_list):
-        for author in authors_list:
-            self.authors.add(author)
-        self.save()
-
-    def remove_authors(self, authors_list):
-        for author in authors_list:
-            self.authors.remove(author)
-        self.save()
+    @classmethod
+    def get_not_returned_books(cls):
+        return list(cls.objects.filter(end_at__isnull=True))
 
     def update(self, **kwargs):
-        allowed = ['name', 'description', 'count']
+        allowed = ['end_at', 'plated_end_at']
         for key, value in kwargs.items():
             if key in allowed:
-                if key == 'name' and len(value) > 128:
-                    continue
                 setattr(self, key, value)
         self.save()
         return self
 
     def to_dict(self):
+        dt_format = lambda dt: format_dt(dt) if dt else None
         return {
             'id': self.id,
-            'name': self.name,
-            'description': self.description,
-            'count': self.count,
-            'authors': [author.id for author in self.authors.all()],
+            'user': self.user.__repr__(),
+            'book': self.book.__repr__(),
+            'created_at': dt_format(self.created_at),
+            'end_at': dt_format(self.end_at),
+            'plated_end_at': dt_format(self.plated_end_at),
         }
 
     def __str__(self):
         d = self.to_dict()
-        order = ['id', 'name', 'description', 'count', 'authors']
-        return ", ".join(f"'{k}': {repr(d[k])}" for k in order)
+        keys = ['id', 'user', 'book', 'created_at', 'end_at', 'plated_end_at']
+        parts = []
+        for k in keys:
+            if k in ['user', 'book']:
+                parts.append(f"'{k}': {d.get(k)}")
+            else:
+                parts.append(f"'{k}': {repr(d.get(k))}")
+        return ", ".join(parts)
 
     def __repr__(self):
-        return f"Book(id={self.id})"
+        return f"Order(id={self.id})"
